@@ -7,7 +7,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import BitsAndBytesConfig
 
-from llm_prompts import species_incontext_prompt
+from llm_prompts import incontext_prompt
 
 def extract_estimate(text):
     match = re.search(r'\\boxed\{([\d.]+)\}', text)
@@ -38,7 +38,7 @@ def get_species_prompt(text, species):
     amended_prompt = text.replace("TASK", f"How likely are you to find {species} here")
 
     # add to in-context prompting
-    input_prompt = species_incontext_prompt.replace("{SPECIES}", species)
+    input_prompt = incontext_prompt.replace("{SPECIES}", species)
     input_prompt = input_prompt.replace("{NEW_LOCATION}", amended_prompt)
 
     return input_prompt
@@ -51,7 +51,7 @@ def generate_predictions(coordinate_w_prompts, tokenizer, model, output_file, sp
             idx = int(line.split('"text": ')[0].split('"index": ')[-1].split(", ")[0])
             lat, lon = extract_coordinates(line)
 
-            input_prompt = get_species_prompt(text = line.split('"text": ')[-1], species)
+            input_prompt = get_species_prompt(text = line.split('"text": ')[-1], species = species)
 
             response = llm_inference(tokenizer, model, input_prompt)
 

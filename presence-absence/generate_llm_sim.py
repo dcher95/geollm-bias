@@ -39,43 +39,12 @@ def get_species_vectors(tokenizer, model, species):
     species_inputs = tokenizer(species_prompt, return_tensors="pt").to(model.device)
     return get_output_vector(species_inputs, model)
 
-def get_vector_similarity(tokenizer, model, species_vector_mean, species_vector_max, coordinate_w_prompts):
+def get_vector_similarity(species_vector_mean, species_vector_max, expert_coordinate_vector_mean, expert_coordinate_vector_max):
 
-    # Go through coordinate prompts
-    results = {}
-    with open(coordinate_w_prompts, "r", encoding="utf-8") as file:
-        for line in file:
-            # Take out info to save out
-            idx = int(line.split('"text": ')[0].split('"index": ')[-1].split(", ")[0])
-            lat, lon = extract_coordinates(line)
+    similarity_mean = cosine_similarity(expert_coordinate_vector_mean, species_vector_mean)[0][0]
+    similarity_max = cosine_similarity(expert_coordinate_vector_max, species_vector_max)[0][0]
 
-            # Add coordinate info to prompt
-            coordinate_info = line.split('"text": ')[-1].split('<TASK>')[0]
-
-            expert_coordinate_prompt = coordinate_prompt.replace("{NEW_LOCATION}", coordinate_info)
-
-            # Get the coordinate vector
-            expert_coordinate_inputs = tokenizer(expert_coordinate_prompt, return_tensors="pt").to(model.device)
-            expert_coordinate_vector_mean, expert_coordinate_vector_max = get_output_vector(expert_coordinate_inputs, model)
-
-            similarity_mean = cosine_similarity(expert_coordinate_vector_mean, species_vector_mean)[0][0]
-            similarity_max = cosine_similarity(expert_coordinate_vector_max, species_vector_max)[0][0]
-
-            results[idx] = {}
-            results[idx]['latitude'] = lat
-            results[idx]['longitude'] = lon
-            results[idx]['mean'] = similarity_mean
-            results[idx]['max'] = similarity_max
-
-    # Convert nested dictionary to a DataFrame
-    df = pd.DataFrame.from_dict(results, orient='index').reset_index()
-    df.columns = ['index', 'latitude', 'longitude' ,'similarity_mean', 'similarity_max']
-
-    # Normalize the similarity columns using MinMaxScaler
-    scaler = MinMaxScaler()
-    df[['normalized_similarity_mean', 'normalized_similarity_max']] = scaler.fit_transform(df[['similarity_mean', 'similarity_max']])
-
-    return df
+    return similarity_mean, similarity_max
 
 def main():
 
@@ -99,7 +68,38 @@ def main():
     # get species output vector
     species_vector_mean, species_vector_max = get_species_vectors(tokenizer, model, species)
     
-    df = get_vector_similarity(tokenizer, model, species_vector_mean, species_vector_max, coordinate_w_prompts)
+    # TODO: Accept dataframe with coordinates
+    # Go through coordinate prompts
+    results = {}
+    with open(coordinate_w_prompts, "r", encoding="utf-8") as file:
+        for line in file:
+            results[idx] = {}
+            idx = int(line.split('"text": ')[0].split('"index": ')[-1].split(", ")[0])
+            lat, lon = extract_coordinates(line)
+
+            # Add coordinate info to prompt
+            coordinate_info = line.split('"text": ')[-1].split('<TASK>')[0]
+
+            expert_coordinate_prompt = coordinate_prompt.replace("{NEW_LOCATION}", coordinate_info)
+
+            # Get the coordinate vector
+            expert_coordinate_inputs = tokenizer(expert_coordinate_prompt, return_tensors="pt").to(model.device)
+            expert_coordinate_vector_mean, expert_coordinate_vector_max = get_output_vector(expert_coordinate_inputs, model)
+
+            similarity_mean, similarity_max = get_vector_similarity(species_vector_mean, species_vector_max, expert_coordinate_vector_mean, expert_coordinate_vector_max)
+
+            results[idx]['latitude'] = lat
+            results[idx]['longitude'] = lon
+            results[idx]['mean'] = similarity_mean
+            results[idx]['max'] = similarity_max
+
+    # Convert nested dictionary to a DataFrame
+    df = pd.DataFrame.from_dict(results, orient='index').reset_index()
+    df.columns = ['index', 'latitude', 'longitude' ,'similarity_mean', 'similarity_max']
+
+    # Normalize the similarity columns using MinMaxScaler
+    scaler = MinMaxScaler()
+    df[['normalized_similarity_mean', 'normalized_similarity_max']] = scaler.fit_transform(df[['similarity_mean', 'similarity_max']])
 
     df.to_csv(output_file)
 
